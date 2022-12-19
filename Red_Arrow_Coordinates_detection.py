@@ -1,105 +1,86 @@
-import cv2 as cv
 import numpy as np
+import time
 import math
-
 
 def nothing(x):
     # any operation
     pass
 
+cap = cv2.VideoCapture(0)
 
-cap = cv.VideoCapture(0)
+cv2.namedWindow("Trackbars")
+cv2.createTrackbar("L-H", "Trackbars", 0, 180, nothing)
+cv2.createTrackbar("L-S", "Trackbars", 66, 255, nothing)
+cv2.createTrackbar("L-V", "Trackbars", 134, 255, nothing)
+cv2.createTrackbar("U-H", "Trackbars", 180, 180, nothing)
+cv2.createTrackbar("U-S", "Trackbars", 255, 255, nothing)
+cv2.createTrackbar("U-V", "Trackbars", 243, 255, nothing)
 
-cv.namedWindow("Trackbars")
-cv.createTrackbar("L-H", "Trackbars", 0, 180, nothing)
-cv.createTrackbar("L-S", "Trackbars", 66, 255, nothing)
-cv.createTrackbar("L-V", "Trackbars", 134, 255, nothing)
-cv.createTrackbar("U-H", "Trackbars", 180, 180, nothing)
-cv.createTrackbar("U-S", "Trackbars", 255, 255, nothing)
-cv.createTrackbar("U-V", "Trackbars", 243, 255, nothing)
+font = cv2.FONT_HERSHEY_COMPLEX
 
-font = cv.FONT_HERSHEY_COMPLEX
+# Set the interval between each output in seconds
+output_interval = 4
+# Initialize the timer
+timer = time.time()
 
-# Create two variables to store the two instances of the arrow. Initially, set them to None.
-original = None
-final = None
+# Initialize variables to store the coordinates from the previous iteration
+prev_x = 0
+prev_y = 0
 
 while True:
     _, frame = cap.read()
-    hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    l_h = cv.getTrackbarPos("L-H", "Trackbars")
-    l_s = cv.getTrackbarPos("L-S", "Trackbars")
-    l_v = cv.getTrackbarPos("L-V", "Trackbars")
-    u_h = cv.getTrackbarPos("U-H", "Trackbars")
-    u_s = cv.getTrackbarPos("U-S", "Trackbars")
-    u_v = cv.getTrackbarPos("U-V", "Trackbars")
+    l_h = cv2.getTrackbarPos("L-H", "Trackbars")
+    l_s = cv2.getTrackbarPos("L-S", "Trackbars")
+    l_v = cv2.getTrackbarPos("L-V", "Trackbars")
+    u_h = cv2.getTrackbarPos("U-H", "Trackbars")
+    u_s = cv2.getTrackbarPos("U-S", "Trackbars")
+    u_v = cv2.getTrackbarPos("U-V", "Trackbars")
 
     lower_red = np.array([l_h, l_s, l_v])
     upper_red = np.array([u_h, u_s, u_v])
 
-    mask = cv.inRange(hsv, lower_red, upper_red)
+    mask = cv2.inRange(hsv, lower_red, upper_red)
     kernel = np.ones((5, 5), np.uint8)
-    mask = cv.erode(mask, kernel)
+    mask = cv2.erode(mask, kernel)
 
     # Contours detection
-    if int(cv.__version__[0]) > 3:
+    if int(cv2.__version__[0]) > 3:
         # Opencv 4.x.x
-        contours, _ = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_AP)
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    else:
+        # Opencv 3.x.x
+        _, contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
     for cnt in contours:
-        area=cv.contourArea(cnt)
-        approx=cv.approxPolyDP(cnt, 0.02*cv.arcLength(cnt, True), True)
+        area = cv2.contourArea(cnt)
+        approx = cv2.approxPolyDP(cnt, 0.02*cv2.arcLength(cnt, True), True)
+        x = approx.ravel()[0]
+        y = approx.ravel()[1]
+
+        # Check if the elapsed time is greater than the output interval
+        if time.time() - timer > output_interval:
+            # If it is, calculate the angle rotated using coordinates from the previous and current iterations
+            dx = x - prev_x
+            dy = y - prev_y
+            angle = math.atan2(dy, dx) * 180 / math.pi
+            print(f'Angle rotated: {angle:.2f} degrees')
+
+            # Reset the timer and update the previous coordinates
+            timer = time.time()
+            prev_x = x
+            prev_y = y
+
         if area > 1000:
-            cv.drawContours(frame, [approx], 0, (0, 0, 0), 5)
+            cv2.drawContours(frame, [approx], 0, (0, 0, 0), 5)
 
-    # Check if the key 'O' is pressed. If it is, set `original` to the current frame and the approx polygon of the arrow.
-    if cv.waitKey(1) & 0xFF == ord('O'):
-        original=(frame, approx)
-        print("Original image captured")
+    cv2.imshow("Frame", frame)
+    cv2.imshow("Mask", mask)
 
-    # Check if the key 'F' is pressed. If it is, set `final` to the current frame and the approx polygon of the arrow.
-    if cv.waitKey(1) & 0xFF == ord('F'):
-        final=(frame, approx)
-        print("Final image captured")
+    key = cv2.waitKey(1)
+    if key == 27:
+        break
 
-    # Check if the Enter key is pressed. If it is, calculate the angle of rotation between `original` and `final` using the approach described in the previous answer.
-    if cv.waitKey(1) & 0xFF == 13:
-        if original and final:
-            # Find the center of the arrow by taking the mean of the x and y coordinates of the points in the approx polygon
-            original_center_x=sum(point[0]
-                                  for point in original[1]) / len(original[1])
-            original_center_y=sum(point[1]
-                                  for point in original[1]) / len(original[1])
-            original_center=(original_center_x, original_center_y)
-
-            final_center_x=sum(point[0] for point in final[1]) / len(final[1])
-            final_center_y=sum(point[1] for point in final[1]) / len(final[1])
-            final_center=(final_center_x, final_center_y)
-
-            # Calculate the angle between the center of the arrow and one of the points in the approx polygon using the arctan2 function
-            original_angle_with_x_axis=math.atan2(
-                original_center[1] - original[1][0][1], original_center[0] - original[1][0][0])
-            final_angle_with_x_axis=math.atan2(
-                final_center[1] - final[1][0][1], final_center[0] - final[1][0][0])
-
-            # Calculate the angle between the original location of the arrow and the current location using the arctan2 function and the difference between the x and y coordinates of the two locations
-            original_angle_with_final_location=math.atan2(
-                final_center_y - original_center_y, final_center_x - original_center_x)
-
-            # Subtract the angle between the center of the arrow and one of the points in the approx polygon from the angle between the original location and the current location to get the angle of rotation relative to the original location
-            rotation_angle=original_angle_with_final_location - original_angle_with_x_axis
-
-        if rotation_angle:
-            print("Angle of rotation:", rotation_angle)
-        else:
-            print("Both original and final images must be captured before calculating the angle of rotation")
-
-        cv.imshow("Frame", frame)
-        cv.imshow("Mask", mask)
-
-        key=cv.waitKey(1)
-        if key == 27:
-            break
-
-        cap.release()
-        cv.destroyAllWindows()
+cap.release()
+cv2.destroyAllWindows()
